@@ -1,0 +1,13 @@
+[package]
+name = "resoxide-json-procmacro"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1"
+syn = { version = "2", features = ["derive"] }
+proc-macro2 = "1"
+stringcase = "0.4.0"

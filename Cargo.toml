@@ -1,0 +1,11 @@
+[package]
+name = "resoxide-json"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+resoxide-json-procmacro = { path = "resoxide-json-procmacro" }
+serde = "1"
+serde_json = { version = "1", features = ["arbitrary_precision", "float_roundtrip"] }
+rust_decimal = { version = "1.39.0", features = ["serde-arbitrary-precision"] }
+
