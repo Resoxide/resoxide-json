@@ -8,6 +8,6 @@ proc-macro = true
 
 [dependencies]
 quote = "1"
-syn = { version = "2", features = ["derive"] }
+syn = { version = "2", features = ["derive","parsing"] }
 proc-macro2 = "1"
 stringcase = "0.4.0"

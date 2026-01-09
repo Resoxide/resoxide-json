@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, Data, Fields, Lit, Meta, MetaNameValue};
+use syn::{Attribute, Data, Fields, Lit, Meta, MetaNameValue, Token};
+use syn::parse::{Parse, ParseStream};
 
 fn camel_case(s: &str) -> String {
     stringcase::camel_case(s)
@@ -11,14 +12,27 @@ pub fn derive_json(token_stream: proc_macro::TokenStream) -> proc_macro::TokenSt
     derive_json2(syn::parse2::<syn::DeriveInput>(token_stream.into()).expect("DeriveInput")).into()
 }
 
-fn filter_nv(attrs: &[Attribute]) -> Vec<&MetaNameValue> {
+struct JsonParam {
+    ident: syn::Ident,
+    eq: Token![=],
+    lit: syn::LitStr,
+}
+
+impl Parse for JsonParam {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(Self{
+            ident: input.parse()?,
+            eq: input.parse()?,
+            lit: input.parse()?,
+        })
+    }
+}
+
+fn filter_attrs(attrs: &[Attribute]) -> Vec<JsonParam> {
     attrs.iter().filter_map(|attr| {
         if let Some(ident) = attr.path().get_ident() {
             if ident.eq("json") {
-                return match &attr.meta {
-                    Meta::NameValue(mnv) => Some(mnv),
-                    _ => None,
-                }
+                return Some(attr.parse_args::<JsonParam>().unwrap());
             }
         }
         None
@@ -110,15 +124,9 @@ fn derive_json2(input: syn::DeriveInput) -> TokenStream {
             for variant in &data_enum.variants {
                 let variant_ident = &variant.ident;
                 let mut variant_name = camel_case(&variant_ident.to_string());
-                for mnv in filter_nv(&variant.attrs) {
-                    match mnv.path.get_ident() {
-                        Some(ident) if ident.eq("rename") => {
-                            let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &mnv.value else {
-                                panic!("Expected string literal");
-                            };
-                            variant_name = lit.value();
-                        }
-                        _ => (),
+                for param in filter_attrs(&variant.attrs) {
+                    if param.ident.eq("rename") {
+                        variant_name = param.lit.value().to_string();
                     }
                 }
                 match &variant.fields {
