@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, Data, Fields, Lit, Meta, MetaNameValue, Token};
 use syn::parse::{Parse, ParseStream};
+use syn::{Attribute, Data, Fields, Token};
 
 fn camel_case(s: &str) -> String {
     stringcase::camel_case(s)
@@ -12,18 +12,19 @@ pub fn derive_json(token_stream: proc_macro::TokenStream) -> proc_macro::TokenSt
     derive_json2(syn::parse2::<syn::DeriveInput>(token_stream.into()).expect("DeriveInput")).into()
 }
 
-struct JsonParam {
-    ident: syn::Ident,
-    eq: Token![=],
-    lit: syn::LitStr,
+#[derive(Debug,PartialEq,Eq)]
+enum JsonParam {
+    Unit(String), NameValue(String, String)
 }
 
 impl Parse for JsonParam {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(Self{
-            ident: input.parse()?,
-            eq: input.parse()?,
-            lit: input.parse()?,
+        let ident = input.parse::<syn::Ident>()?;
+        Ok(if input.lookahead1().peek(Token![=]) {
+            input.parse::<Token![=]>()?;
+            JsonParam::NameValue(ident.to_string(), input.parse::<syn::LitStr>()?.value())
+        } else {
+            JsonParam::Unit(ident.to_string())
         })
     }
 }
@@ -49,12 +50,26 @@ fn derive_json2(input: syn::DeriveInput) -> TokenStream {
                     let mut to_token_stream = TokenStream::new();
                     let mut from_token_stream = TokenStream::new();
                     for field in &named_fields.named {
+                        let params = filter_attrs(&field.attrs);
+                        let skip = params.iter().find(|&v| match v {
+                            JsonParam::Unit(_) => false,
+                            JsonParam::NameValue(s, _) => s.eq("skip"),
+                        });
                         let field_ident = field.ident.as_ref().unwrap();
                         let field_name = camel_case(&field_ident.to_string());
                         let field_type = &field.ty;
-                        to_token_stream.extend(quote! {
-                            map.insert(#field_name.to_string(), <#field_type as ::resoxide_json::Json>::to_token(&self.#field_ident)?);
-                        });
+                        if let Some(JsonParam::NameValue(_, skip_path)) = skip {
+                            let path = syn::parse_str::<syn::Path>(&skip_path).unwrap();
+                            to_token_stream.extend(quote! {
+                                if !#path(&self.#field_ident) {
+                                    map.insert(#field_name.to_string(), <#field_type as ::resoxide_json::Json>::to_token(&self.#field_ident)?);
+                                }
+                            });
+                        } else {
+                            to_token_stream.extend(quote! {
+                                map.insert(#field_name.to_string(), <#field_type as ::resoxide_json::Json>::to_token(&self.#field_ident)?);
+                            });
+                        }
                         if use_default {
                             from_token_stream.extend(quote! {
                                 #field_ident:
@@ -70,8 +85,8 @@ fn derive_json2(input: syn::DeriveInput) -> TokenStream {
                             type Error = ::resoxide_json::Error;
 
                             fn to_token(&self) -> Result<::resoxide_json::Token, Self::Error> {
-                                let mut map: ::std::collections::HashMap<String,::resoxide_json::Token> =
-                                    ::std::collections::HashMap::new();
+                                let mut map: ::resoxide_json::Map =
+                                    ::resoxide_json::Map::default();
 
                                 #to_token_stream
 
@@ -125,8 +140,11 @@ fn derive_json2(input: syn::DeriveInput) -> TokenStream {
                 let variant_ident = &variant.ident;
                 let mut variant_name = camel_case(&variant_ident.to_string());
                 for param in filter_attrs(&variant.attrs) {
-                    if param.ident.eq("rename") {
-                        variant_name = param.lit.value().to_string();
+                    match param {
+                        JsonParam::NameValue(name, value) if name.eq("rename") => {
+                            variant_name = value;
+                        }
+                        _ => ()
                     }
                 }
                 match &variant.fields {
@@ -148,7 +166,7 @@ fn derive_json2(input: syn::DeriveInput) -> TokenStream {
                     }
                     Fields::Unit => {
                         from_token_stream.extend(quote! {
-                            #ty::#variant_ident => (#variant_name, ::resoxide_json::Token::Object(::std::collections::HashMap::new())),
+                            #ty::#variant_ident => (#variant_name, ::resoxide_json::Token::Object(::resoxide_json::Map::default())),
                         });
                         to_token_stream.extend(quote! {
                             #variant_name => Ok(#ty::#variant_ident),

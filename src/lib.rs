@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::{Display, Formatter};
 use rust_decimal::Decimal;
@@ -7,6 +6,8 @@ pub use resoxide_json_procmacro::Json;
 
 #[derive(Debug,Default,Copy,Clone)]
 pub struct Error;
+
+pub type Map = std::collections::HashMap<String, Token>;
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -92,7 +93,7 @@ pub enum Token {
     Number(Number),
     String(String),
     Array(Vec<Token>),
-    Object(HashMap<String, Token>),
+    Object(Map),
 }
 
 impl From<&Token> for serde_json::Value {
@@ -371,16 +372,16 @@ impl<T: Json> Json for Vec<T> {
     }
 }
 
-impl<T: Json> Json for HashMap<String, T> {
+impl<T: Json> Json for std::collections::HashMap<String, T> {
     type Error = T::Error;
 
     fn to_token(&self) -> Result<Token, Self::Error> {
-        Ok(Token::Object(self.iter().map(|(k, v)| Ok((k.to_string(), v.to_token()?))).collect::<Result<HashMap<_, _>, _>>()?))
+        Ok(Token::Object(self.iter().map(|(k, v)| Ok((k.to_string(), v.to_token()?))).collect::<Result<Map, _>>()?))
     }
 
     fn from_token(token: &Token) -> Result<Self, Self::Error> {
         match token {
-            Token::Object(m) => Ok(m.iter().map(|(k,t)| Ok((k.to_string(), T::from_token(t)?))).collect::<Result<HashMap<_, _>, _>>()?),
+            Token::Object(m) => Ok(m.iter().map(|(k,t)| Ok((k.to_string(), T::from_token(t)?))).collect::<Result<std::collections::HashMap<_, _>, _>>()?),
             _ => Err(T::error()),
         }
     }
