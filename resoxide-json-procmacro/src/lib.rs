@@ -122,6 +122,10 @@ fn derive_json2(input: syn::DeriveInput) -> TokenStream {
                                 fn from_token(token: &::resoxide_json::Token) -> Result<Self, Self::Error> {
                                     Ok(#ty(<#inner_ty as ::resoxide_json::Json>::from_token(token)?))
                                 }
+
+                                fn error() -> Self::Error {
+                                    ::resoxide_json::Error
+                                }
                             }
                         }
                     } else {
